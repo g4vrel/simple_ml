@@ -29,7 +29,7 @@ optional arguments:
 	- [Logistic distribution in PyTorch](https://pytorch.org/docs/stable/distributions.html#torch.distributions.transformed_distribution.TransformedDistribution)
 - 4 additive coupling layers
 	- ReLU activation function; 5 hidden layers with 1000 units and no batch normalization
-- Optimizer: Adam (default hyperparameters except for lr); exponential learning rate decay
+- Optimizer: Adam (default hyperparameters); exponential learning rate decay
 - Dequantization: Uniform (add uniform noise, divide by 256)
 
 | Batch size | Number of epochs | Initial lr | gamma | 
