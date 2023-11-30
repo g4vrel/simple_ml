@@ -95,7 +95,7 @@ if __name__ == '__main__':
     run_config = argparse.Namespace(
         name='mnist_nice',
         lr=1e-3,
-        gamma=0.5,
+        gamma=0.9,
         nh=1000,
     )
     train_loader, test_loader = get_loaders()
