@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 import torchvision.datasets as datasets
 import torch
 import torch.optim as optim
-from modules import NICE
+from modules import NICE, make_prior
 
 
 os.makedirs('results', exist_ok=True)
@@ -99,7 +99,8 @@ if __name__ == '__main__':
         nh=1000,
     )
     train_loader, test_loader = get_loaders()
-    model = NICE(nh=run_config.nh, device=device).to(device)
+    prior = make_prior()
+    model = NICE(prior, nh=run_config.nh).to(device)
     optimizer = optim.Adam(model.parameters(), lr=run_config.lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=run_config.gamma)
     for epoch in range(args.epochs):

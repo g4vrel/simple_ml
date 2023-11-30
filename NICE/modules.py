@@ -48,7 +48,7 @@ class ACL(nn.Module):
         if self.p:
             z1, z2 = z2, z1
         x1 = z1
-        x2 = z2 - self.m(x1)
+        x2 = z2 - self.m(z1)
         if self.p:
             x1, x2 = x2, x1
         x = torch.empty(z.shape, device=z.device)
@@ -57,10 +57,15 @@ class ACL(nn.Module):
         return x
 
 
+def make_prior(nin=784, device='cuda'):
+    base_distribution = Uniform(torch.zeros(nin, device=device), torch.ones(nin, device=device))
+    transforms = [SigmoidTransform().inv]
+    return TransformedDistribution(base_distribution, transforms)
+
+
 class NICE(nn.Module):
-    def __init__(self, nin=28*28, nh=1000, device='cuda'):
+    def __init__(self, prior, nin=28*28, nh=1000):
         super().__init__()
-        self.nin = nin
         self.s = nn.Parameter(torch.rand(1, nin, requires_grad=True))
         self.flow = nn.ModuleList([
             ACL(nin//2, nh, False),
@@ -68,9 +73,7 @@ class NICE(nn.Module):
             ACL(nin//2, nh, False),
             ACL(nin//2, nh, True)
         ])
-        base_distribution = Uniform(torch.zeros(nin, device=device), torch.ones(nin, device=device))
-        transforms = [SigmoidTransform().inv]
-        self.prior = TransformedDistribution(base_distribution, transforms)
+        self.prior = prior
 
     def forward(self, x):
         x = x.clone()
@@ -85,7 +88,7 @@ class NICE(nn.Module):
         h = h.clone() * torch.exp(-self.s)
         for flow in self.flow[::-1]:
             h = flow.backward(h)
-        return h, torch.sum(-self.s, dim=1)
+        return h, torch.sum(-self.s)
 
     def sample(self, n=1):
         z = self.prior.sample((n,))
