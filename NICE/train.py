@@ -99,7 +99,7 @@ if __name__ == '__main__':
         nh=1000,
     )
     train_loader, test_loader = get_loaders()
-    prior = make_prior()
+    prior = make_prior(device=device)
     model = NICE(prior, nh=run_config.nh).to(device)
     optimizer = optim.Adam(model.parameters(), lr=run_config.lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=run_config.gamma)
