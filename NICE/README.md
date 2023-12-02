@@ -18,9 +18,9 @@ optional arguments:
   --batch-size N       input batch size for training (default: 64)
   --test-batch-size N  input batch size for testing (default: 256)
   --epochs N           number of epochs to train (default: 75)
-  --cuda               train on CUDA
+  --cuda               train on CUDA (default: True)
   -j N, --workers N    number of data loading workers (default: 4)
-  --log-interval N     how many batches to wait before logging training status
+  --log-interval N     how many batches to wait before logging training status (default: 100)
 ```
 
 ## Run settings
