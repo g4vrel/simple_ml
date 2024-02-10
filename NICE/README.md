@@ -43,7 +43,6 @@ References that helped me during implementation:
 - DakshIdnani's [implementation](https://github.com/DakshIdnani/pytorch-nice) of NICE
 - Great [blog post](https://bjlkeng.io/posts/normalizing-flows-with-real-nvp/) by Brian Keng
 	- Introduces flow-based models and talks about his implementation of [Real NVP](https://arxiv.org/abs/1605.08803). Helped me a lot with NICE (especially his section on data preprocessing)
-- [A note on the evaluation of generative models](https://arxiv.org/abs/1511.01844)
 - https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial11/NF_image_modeling.html#Dequantization
 - MaximeVandegar's [implementation](https://github.com/MaximeVandegar/Papers-in-100-Lines-of-Code/tree/main/NICE_Non_linear_Independent_Components_Estimation) of NICE
 	- Delightfully simple
