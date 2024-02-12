@@ -8,13 +8,13 @@ class ResnetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, temb_channels, groups=32, dropout=0.1, attn=False):
         super().__init__()
         self.skip_connection = nn.Identity() if in_channels == out_channels else nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=True)
-        self.temb_fc = nn.Linear(temb_channels, out_channels * 2)
         self.norm1 = nn.GroupNorm(num_groups=groups, num_channels=in_channels, affine=True)
         self.norm2 = nn.GroupNorm(num_groups=groups, num_channels=out_channels, affine=True)
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
         self.dropout = nn.Dropout(dropout)
         self.act = nn.SiLU()
+        self.temb_proj = nn.Linear(temb_channels, out_channels)
         if attn:
             self.attn = AttentionBlock(out_channels)
         else:
@@ -24,10 +24,8 @@ class ResnetBlock(nn.Module):
         h = self.norm1(x)
         h = self.act(h)
         h = self.conv1(h)
+        h = h + self.temb_proj(self.act(temb))[:, :, None, None]
         h = self.norm2(h)
-        t = self.act(self.temb_fc(temb))[:, :, None, None]
-        scale, shift = torch.chunk(t, 2, dim=1)
-        h = h * (1 + scale) + shift # ref https://github.com/lucidrains/denoising-diffusion-pytorch/issues/77
         h = self.act(h)
         h = self.dropout(h)
         h = self.conv2(h)
@@ -56,21 +54,20 @@ class Upsample(nn.Module):
 
 
 class AttentionBlock(nn.Module):
-    def __init__(self, in_channels, groups=32, dropout=0.1):
+    def __init__(self, in_channels, groups=32):
         super().__init__()
         self.norm = nn.GroupNorm(num_groups=groups, num_channels=in_channels)
         self.Q = nn.Conv2d(in_channels, in_channels, 1)
         self.K = nn.Conv2d(in_channels, in_channels, 1)
         self.V = nn.Conv2d(in_channels, in_channels, 1)
         self.proj = nn.Conv2d(in_channels, in_channels, 1)
-        self.dropout = dropout
 
     def forward(self, x):
         h = self.norm(x)
         q = rearrange(self.Q(h), 'b c h w -> b (h w) c')
         k = rearrange(self.K(h), 'b c h w -> b (h w) c')
         v = rearrange(self.V(h), 'b c h w -> b (h w) c')
-        out = F.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout)
+        out = F.scaled_dot_product_attention(q, k, v)
         out = rearrange(out, 'b (h w) c -> b c h w', **parse_shape(x, 'b c h w'))
         return x + self.proj(out)
 
@@ -90,16 +87,16 @@ def get_timestep_embedding(timesteps: torch.Tensor, embedding_dim: int, downscal
 
 
 class Unet(nn.Module):
-    def __init__(self, in_channels = 3, groups=32):
+    def __init__(self, ch=128, ch_mul=(1, 2, 2, 2), att_channels=(0, 0, 1, 0), groups=32):
         super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = (32, 64, 128, 256)
-        self.att_channels = (0, 0, 1, 0)
-        self.start_dim = self.out_channels[0]
-        self.time_embed_dim = self.start_dim * 4
-        self.conv_input = nn.Conv2d(in_channels, self.start_dim, 3, 1, 1)
+        self.ch = ch
+        self.ch_mul = ch_mul
+        self.att_channels = att_channels
+        assert len(self.att_channels) == len(self.ch_mul), 'Attention bool must be defined for each channel'
+        self.time_embed_dim = self.ch * 4
+        self.input_proj = nn.Conv2d(3, self.ch, 3, 1, 1)
         self.time_embedding = nn.Sequential(
-            nn.Linear(self.start_dim, self.time_embed_dim, bias=False),
+            nn.Linear(self.ch, self.time_embed_dim, bias=False),
             nn.SiLU(),
             nn.Linear(self.time_embed_dim, self.time_embed_dim, bias=True)
         )
@@ -108,56 +105,73 @@ class Unet(nn.Module):
         self.up = nn.ModuleList([])
         self._make_paths()
         self.final = nn.Sequential(
-            nn.GroupNorm(num_groups=groups, num_channels=2*self.start_dim),
+            nn.GroupNorm(num_groups=groups, num_channels=2*self.ch),
             nn.SiLU(),
-            nn.Conv2d(2*self.start_dim, in_channels, 3, 1, 1)
+            nn.Conv2d(2*self.ch, 3, 3, 1, 1)
         )
 
     def forward(self, x, timesteps):
         assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
-        timesteps = get_timestep_embedding(timesteps, self.start_dim)
+        timesteps = get_timestep_embedding(timesteps, self.ch)
         temb = self.time_embedding(timesteps)
-        x = self.conv_input(x)
+        x = self.input_proj(x)
         h = x.clone()
         down_path = []
-        for b1, b2, downsample in self.down:
-            h = b1(h, temb)
+        for i in range(len(self.down)):
+            h = self.down[i][0](h, temb)
             down_path.append(h)
-            h = b2(h, temb)
+            h = self.down[i][1](h, temb)
             down_path.append(h)
-            h = downsample(h)
+            if i < (len(self.down) - 1): # downsample
+                h = self.down[i][2](h)
         h = self.mid[0](h, temb)
         h = self.mid[1](h, temb)
-        h = self.mid[2](h)
-        for b1, b2, upsample in self.up:
-            h = b1(torch.cat((h, down_path.pop()), dim=1), temb)
-            h = b2(torch.cat((h, down_path.pop()), dim=1), temb)
-            h = upsample(h)
+        for i in range(len(self.up)):
+            h = self.up[i][0](torch.cat((h, down_path.pop()), dim=1), temb)
+            h = self.up[i][1](torch.cat((h, down_path.pop()), dim=1), temb)
+            if i < (len(self.down) - 1): # upsample
+                h = self.up[i][2](h)
         x = torch.cat((h, x), dim=1)
         return self.final(x)
 
+    def _compute_channels(self, res, down):
+        nch_in = self.ch * self.ch_mul[res]
+        if down:
+            if res == (len(self.ch_mul) - 1):
+                nch_out = nch_in
+            else:
+                nch_out = self.ch * self.ch_mul[res + 1]
+            transition = Downsample(nch_in, nch_out)
+        else:
+            if res == 0:
+                nch_out = nch_in
+            else:
+                nch_out = self.ch * self.ch_mul[res - 1]
+            transition = Upsample(nch_in, nch_out)
+        return nch_in, transition
+
+    def _make_res(self, res, down):
+        attn = self.att_channels[res] == 1
+        nch_in, transition = self._compute_channels(res, down)
+        if not down: nin = 2 * nch_in
+        else: nin = nch_in
+        return nn.ModuleList([ResnetBlock(nin, nch_in, self.time_embed_dim, attn=attn),
+                              ResnetBlock(nin, nch_in, self.time_embed_dim, attn=attn),
+                              transition])
+
     def _make_paths(self):
-        in_out = list(zip(self.out_channels[:-1], self.out_channels[1:]))
-        idx = 0
-        for (nin, nout) in in_out:
-            attn = self.att_channels[idx] == 1
-            first = idx == 0
-            down_res =  nn.ModuleList([
-                ResnetBlock(in_channels=nin, out_channels=nin, temb_channels=self.time_embed_dim, attn=attn),
-                ResnetBlock(in_channels=nin, out_channels=nin, temb_channels=self.time_embed_dim, attn=attn),
-                Downsample(in_channels=nin, out_channels=nout)
-            ])
-            up_res =  nn.ModuleList([
-                ResnetBlock(in_channels=(nout + nin), out_channels=nout, temb_channels=self.time_embed_dim, attn=attn),
-                ResnetBlock(in_channels=(nout + nin), out_channels=nout, temb_channels=self.time_embed_dim, attn=attn),
-                Upsample(in_channels=nout, out_channels=nin) if not first else nn.Conv2d(nout, nin, 3, padding=1)
-            ])
-            self.down.append(down_res)
-            self.up.insert(0, up_res)
-            idx += 1
-        mid_res = nn.ModuleList([
-            ResnetBlock(in_channels=nout, out_channels=nout, temb_channels=self.time_embed_dim, attn=True),
-            ResnetBlock(in_channels=nout, out_channels=nout, temb_channels=self.time_embed_dim, attn=False),
-            Upsample(in_channels=nout, out_channels=nout),
+        num_res = len(self.ch_mul)
+        for res in range(num_res):
+            down_blocks = self._make_res(res, down=True)
+            up_blocks = self._make_res(res, down=False)
+            if res == (num_res - 1):
+                down_blocks = down_blocks[:-1]
+            if res == 0:
+                up_blocks = up_blocks[:-1]
+            self.down.append(down_blocks)
+            self.up.insert(0, up_blocks)
+        nch = self.ch * self.ch_mul[-1]
+        self.mid = nn.ModuleList([
+            ResnetBlock(nch, nch, self.time_embed_dim, attn=True),
+            ResnetBlock(nch, nch, self.time_embed_dim, attn=False),
         ])
-        self.mid = mid_res
