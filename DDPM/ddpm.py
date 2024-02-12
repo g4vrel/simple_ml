@@ -10,10 +10,10 @@ if use_wandb:
 
 
 class DDPM:
-    def __init__(self, timesteps=1000, device='cuda'):
+    def __init__(self, denoiser, timesteps=1000, device='cuda'):
         self.timesteps = timesteps
         self.device = device
-        self.denoiser = Unet().to(device)
+        self.denoiser = denoiser.to(device)
         self._register_scheduler()
         self.ext = lambda x: rearrange(x, 'b -> b 1 1 1')
         self.step = 0
