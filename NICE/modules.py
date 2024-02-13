@@ -1,96 +1,43 @@
+from torch.utils.data import random_split, DataLoader
+from torchvision.datasets import MNIST
+import torchvision.transforms as T
+from torchvision.utils import make_grid
+import lightning as L
 import torch
-import torch.nn as nn
-from torch.distributions import Uniform, TransformedDistribution
-from torch.distributions.transforms import SigmoidTransform
 
 
-class MLP(nn.Module):
-    def __init__(self, nin, nh):
+class MNISTDataModule(L.LightningDataModule):
+    def __init__(self, data_dir:str="data/", batch_size:int=256):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(nin, nh),
-            nn.ReLU(),
-            nn.Linear(nh, nh),
-            nn.ReLU(),
-            nn.Linear(nh, nh),
-            nn.ReLU(),
-            nn.Linear(nh, nh),
-            nn.ReLU(),
-            nn.Linear(nh, nin),
-        )
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.transform = T.ToTensor()
+        self.j = 2
 
-    def forward(self, x):
-        return self.net(x)
+    def prepare_data(self):
+        MNIST(self.data_dir, download=True, train=True, transform=self.transform)
+        MNIST(self.data_dir, download=True, train=False, transform=self.transform)
 
+    def setup(self, stage:str):
+        mnist_full = MNIST(self.data_dir, train=True, transform=self.transform)
+        self.mnist_train, self.mnist_val = random_split(mnist_full, [50000, 10000],
+                                                        generator=torch.Generator().manual_seed(159753)
+                                                        )
+        self.mnist_test = MNIST(self.data_dir, train=False, transform=self.transform)
 
-class ACL(nn.Module):
-    def __init__(self, nin, nh, p):
-        super().__init__()
-        self.m = MLP(nin, nh)
-        self.p = p
-        self.nin = nin
+    def train_dataloader(self):
+        return DataLoader(self.mnist_train, batch_size=self.batch_size, shuffle=True, drop_last=True, num_workers=self.j)
 
-    def forward(self, x):
-        x1, x2 = x[:,::2], x[:,1::2]
-        if self.p:
-            x1, x2 = x2, x1
-        z1 = x1
-        z2 = x2 + self.m(x1)
-        if self.p:
-            z1, z2 = z2, z1
-        z = torch.empty(x.shape, device=x.device)
-        z[:, ::2] = z1
-        z[:, 1::2] = z2
-        return z
+    def val_dataloader(self):
+        return DataLoader(self.mnist_val, batch_size=self.batch_size, drop_last=True, num_workers=self.j)
 
-    def backward(self, z):
-        z1, z2 =  z[:,::2], z[:,1::2]
-        if self.p:
-            z1, z2 = z2, z1
-        x1 = z1
-        x2 = z2 - self.m(z1)
-        if self.p:
-            x1, x2 = x2, x1
-        x = torch.empty(z.shape, device=z.device)
-        x[:, ::2] = x1
-        x[:, 1::2] = x2
-        return x
+    def test_dataloader(self):
+        return DataLoader(self.mnist_test, batch_size=self.batch_size, drop_last=True, num_workers=self.j)
+    
 
-
-def make_prior(nin=784, device='cuda'):
-    base_distribution = Uniform(torch.zeros(nin, device=device), torch.ones(nin, device=device))
-    transforms = [SigmoidTransform().inv]
-    return TransformedDistribution(base_distribution, transforms)
-
-
-class NICE(nn.Module):
-    def __init__(self, prior, nin=28*28, nh=1000):
-        super().__init__()
-        self.s = nn.Parameter(torch.rand(1, nin, requires_grad=True))
-        self.flow = nn.ModuleList([
-            ACL(nin//2, nh, False),
-            ACL(nin//2, nh, True),
-            ACL(nin//2, nh, False),
-            ACL(nin//2, nh, True)
-        ])
-        self.prior = prior
-
-    def forward(self, x):
-        x = x.clone()
-        for flow in self.flow:
-            x = flow.forward(x)
-        x = torch.exp(self.s) * x
-        log_prob = self.prior.log_prob(x).sum(dim=1)
-        log_det = torch.sum(self.s)
-        return x, log_prob, log_det
-
-    def backward(self, h):
-        h = h.clone() * torch.exp(-self.s)
-        for flow in self.flow[::-1]:
-            h = flow.backward(h)
-        return h, torch.sum(-self.s)
-
-    def sample(self, n=1):
-        z = self.prior.sample((n,))
-        x, _ = self.backward(z)
-        return z, x
+def output_images(x0: torch.Tensor, nrow=10):
+    x0 = x0.view(-1, 1, 28, 28)
+    x0 = torch.clamp(x0, 0, 1)
+    x0 = make_grid(x0, nrow=nrow)
+    im = x0.cpu()
+    return T.ToPILImage()(im)
