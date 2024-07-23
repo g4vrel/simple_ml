@@ -21,12 +21,11 @@ def gaussian_kl(mean1, logvar1, mean2, logvar2):
         - 1.0
     )
 
-# TODO: check reductions
-# TODO: make sure this is correct
+# TODO: check signs
 def mc_objective(vae, x):
     pred, z, eps, mean, logvar = vae(x)
 
-    posterior_term = - gaussian_log_prob(torch.zeros_like(z), logvar, eps).sum(1).mean()             # q_ϕ(z|x)
+    posterior_term = gaussian_log_prob(torch.zeros_like(z), logvar, eps).sum(1).mean()               # q_ϕ(z|x)
     likelihood_term = F.binary_cross_entropy(pred, x.flatten(1), reduction='none').sum(1).mean()     # p_θ(x|z)
     prior_term = - gaussian_log_prob(torch.zeros_like(z), torch.zeros_like(logvar), z).sum(1).mean() # p_θ(z)
 
@@ -45,7 +44,7 @@ def kl_objective(vae, x):
 
     return likelihood_term, kl_term
 
-
+# TODO: init
 class BernoulliVAE(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dim):
         super().__init__()

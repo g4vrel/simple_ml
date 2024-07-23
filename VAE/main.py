@@ -36,7 +36,7 @@ if __name__ == '__main__':
         "latent_dim": 16,
         "hidden_dim": 128,
         "input_shape": (28, 28),
-        "bs":256,
+        "bs":64,
         "j":3,
         "print_freq":100
     }
@@ -45,7 +45,7 @@ if __name__ == '__main__':
 
     train_loader, eval_loader = get_loaders(config)
 
-    optim = torch.optim.Adam(vae.parameters(), lr=config["lr"])
+    optim = torch.optim.Adam(vae.parameters(), lr=config["lr"], betas=(0.5, 0.999))
 
     vae.train()
 
@@ -56,17 +56,20 @@ if __name__ == '__main__':
             optim.zero_grad()
 
             x = x.to(device)
-            
+
             likelihood, kl = kl_objective(vae, x)
             loss = likelihood + kl
             loss.backward()
             
+            # TODO: figure out why norm is so large
             grad_norm = torch.nn.utils.clip_grad_norm_(vae.parameters(), 1.0)
 
             optim.step()
             
             if step % config["print_freq"] == 0:
-                print(f"Step: {step:4.0f} | p_θ(x|z): {likelihood.item() :.4f} | KL: {kl.item() :.4f} | Loss = {loss.item() :.5f} | Grad_norm: {grad_norm:.4f}")
+                print("Step: {:4.0f} | Loss = {:.6f} | p_θ(x|z): {:.4f} | KL: {:.4f} | Grad_norm: {:.4f}".format(
+                    step, loss.item(), likelihood.item(), kl.item(), grad_norm
+                ))
 
             step += 1
 
