@@ -1,0 +1,9 @@
+name: hinton
+channels:
+- pytorch
+dependencies:
+- pytorch
+- pytorch-cuda=11.8
+- torchaudio
+- torchvision
+
