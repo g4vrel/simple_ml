@@ -46,7 +46,7 @@ if __name__ == '__main__':
             x = x.to(device)
             z = torch.randn((config['bs'], config['noise_dim']), device=device)
 
-            gen_x = generator(z)
+            gen_x = generator(z).detach()
 
             # Critic step
             critic_loss = - critic(x).mean() + critic(gen_x).mean()
