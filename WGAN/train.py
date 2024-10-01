@@ -74,7 +74,7 @@ if __name__ == '__main__':
 
             if (step + 1) % config['print_freq'] == 0:
                 critic_mean_loss = torch.tensor(critic_losses).mean()
-                print(f'{critic_loss.item():.5f} | {generator_loss.item():.5f}')
+                print(f'{critic_mean_loss.item():.5f} | {generator_loss.item():.5f}')
 
                 critic_losses = []
 
