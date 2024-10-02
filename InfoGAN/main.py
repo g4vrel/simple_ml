@@ -11,12 +11,15 @@ from model import Generator, SharedNet
 from utils import get_loaders, make_default_dirs
 from eval import img_grid
 
+from torch.distributions import OneHotCategorical, Normal
+
 
 def sample_latent(config, device='cuda'):    
     cat = F.one_hot(torch.randint(0, 10, (config['bs'],), device=device), 10).float()
     cont = torch.empty((config['bs'], config['cont_dim']), device=device).uniform_(-1, 1)
-    noise = torch.empty((config['bs'], config['noise_dim']), device=device).uniform_(-1, 1)
-    
+
+    noise = torch.randn((config['bs'], config['noise_dim']), device=device)
+
     latent = {'cat': cat,
               'cont': cont,
               'noise': noise}
@@ -24,11 +27,35 @@ def sample_latent(config, device='cuda'):
     return (torch.cat((cat, cont, noise), 1), latent)
 
 
-def mutual_information_loss(latent, approximation):
+def categorical_mi(latent, approximation, device='cuda'):
+    probs = torch.ones(10, device=device) / 10
+    
+    prior = OneHotCategorical(probs)
+    posterior = OneHotCategorical(probs=approximation['cat'])
+
+    mutual_information = posterior.log_prob(latent['cat']) - prior.log_prob(latent['cat'])
+    
+    return mutual_information.mean()
+
+
+def gaussian_mi(latent, approximation, device='cuda'):
+    prior = Normal(torch.zeros_like(latent['cont']), torch.ones_like(latent['cont']))
+    
+    mean = approximation['mean']
+    std = torch.exp(0.5 * approximation['logstd'])
+
+    posterior = Normal(mean, std)
+
+    mutual_information = posterior.log_prob(latent['cont']) - prior.log_prob(latent['cont'])
+    
+    return mutual_information.mean()
+
+
+def lower_bound_loss(latent, approximation):
     categorical_loss = F.cross_entropy(approximation['cat'], latent['cat'])
 
     mean = approximation['mean']
-    std = torch.exp(approximation['logstd'])
+    std = torch.exp(0.5 * approximation['logstd'])
     gaussian = torch.distributions.Normal(mean, std)
 
     continuous_loss = -gaussian.log_prob(latent['cont']).sum(dim=1).mean()
@@ -46,17 +73,17 @@ if __name__ == '__main__':
         'cont_dim': 2,
         'noise_dim': 62,
         'input_shape': (28, 28),
-        'bs': 64,
+        'bs': 128,
         'j': 3,
         'print_freq': 200,
         'lambda_categorical': 1,
         'lambda_continuous': 0.1,
         'lr_dis': 2e-4,
-        'lr_gen': 1e-3,
+        'lr_gen': 2e-4,
         'epochs': 200
     }
 
-    generator = Generator().to(device)
+    generator = Generator(hidden_dim=512).to(device)
 
     shared_net = SharedNet(cat_dim=config['cat_dim'],
                            cont_dim=config['cont_dim']).to(device)
@@ -100,22 +127,23 @@ if __name__ == '__main__':
             gen_loss = adv_loss(shared_net.discriminate(fake_repr), ones)
 
             approximation = shared_net.recognize(fake_repr)
-            cat_info, cont_info = mutual_information_loss(latent, approximation)
 
-            information_loss = config['lambda_categorical'] * cat_info + config['lambda_continuous'] * cont_info
+            cat_mi = categorical_mi(latent, approximation)
+            cont_mi = gaussian_mi(latent, approximation)
 
-            total_loss = gen_loss + information_loss
+            information_loss = config['lambda_categorical'] * cat_mi + config['lambda_continuous'] * cont_mi
+
+            total_loss = gen_loss - information_loss
 
             optim_gen.zero_grad(set_to_none=True)
             optim_sn.zero_grad(set_to_none=True)
             total_loss.backward()
-            gen_norm = torch.nn.utils.clip_grad_norm_(generator.parameters(), 1.0)
             info_norm = torch.nn.utils.clip_grad_norm_(shared_net.parameters(), 1.0)
             optim_gen.step()
             optim_sn.step()
             
             if step % config['print_freq'] == 0:
-                info_term = config['lambda_categorical'] * cat_info + config['lambda_continuous'] * cont_info
+                info_term = config['lambda_categorical'] * cat_mi + config['lambda_continuous'] * cont_mi
                 print(f'{dis_loss.item():.5f} | {gen_loss.item():.5f} | {info_term.item():.5f}')
 
             step += 1

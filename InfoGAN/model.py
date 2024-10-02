@@ -28,7 +28,6 @@ class Generator(nn.Module):
     def forward(self, noise):
         return self.net(noise)
 
-
 class SharedNet(nn.Module):
     def __init__(self, cat_dim, cont_dim, hidden_dim=128):
         super().__init__()
@@ -36,11 +35,11 @@ class SharedNet(nn.Module):
         self.cont_dim = cont_dim
 
         self.net = nn.Sequential(nn.Linear(28*28, hidden_dim),
-                                 nn.LeakyReLU(negative_slope=0.1),
-                                 nn.Dropout(0.25),
+                                 nn.LeakyReLU(0.1),
+                                 nn.Dropout(0.1),
                                  nn.Linear(hidden_dim, hidden_dim),
                                  nn.BatchNorm1d(hidden_dim),
-                                 nn.LeakyReLU(negative_slope=0.1))
+                                 nn.LeakyReLU(0.1))
         
         self.discriminator = nn.Sequential(nn.Linear(hidden_dim, 1), nn.Sigmoid())
 
