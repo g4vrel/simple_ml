@@ -10,4 +10,5 @@ Simple implementation of ML papers centered around generative models.
 | Auto-Encoding Variational Bayes | [Arxiv](https://arxiv.org/abs/1312.6114) | [Code](./VAE) |
 | Adversarial Autoencoders | [Arxiv](https://arxiv.org/abs/1511.05644) | [Code](https://github.com/g4vrel/AAE) |
 | InfoGAN: Interpretable Representation Learning by Information Maximizing Generative Adversarial Net | [Arxiv](https://arxiv.org/abs/1606.03657) | [Code](./InfoGAN) |
-| Wasserstein GAN | [Arxiv](https://arxiv.org/abs/1701.07875) | [Code](./WGAN) | 
+| Wasserstein GAN | [Arxiv](https://arxiv.org/abs/1701.07875) | [Code](./WGAN) |
+| Score-Based Generative Modeling through Stochastic Differential Equations | [Arxiv](https://arxiv.org/abs/2011.13456) | [Code](https://github.com/g4vrel/sde_ddpm) |
