@@ -1,18 +1,14 @@
-import numpy as np
-
+import os
 import torch
-
-torch.manual_seed(159753)
-np.random.seed(159753)
 
 from model import Generator, Critic
 
-from utils import get_loaders, make_default_dirs
-from eval import generation
+from utils import get_loaders, unloader
+from torchvision.utils import save_image
 
 
 if __name__ == '__main__':
-    make_default_dirs()
+    os.makedirs('samples', exist_ok=True)
 
     device = 'cuda'
 
@@ -20,16 +16,18 @@ if __name__ == '__main__':
         'noise_dim': 64,
         'input_shape': (28, 28),
         'bs': 64,
-        'j': 3,
-        'print_freq': 200,
-        'lr': 0.0001,
-        'epochs': 200,
+        'num_workers': 6,
+        'print_freq': 400,
+        'lr': 5e-5,
+        'epochs': 500,
         'c': 0.01,
         'n_critic': 5
     }
 
     generator = Generator().to(device)
+    generator = torch.compile(generator)
     critic = Critic().to(device)
+    critic = torch.compile(critic)
 
     train_loader, eval_loader = get_loaders(config)
 
@@ -82,8 +80,14 @@ if __name__ == '__main__':
 
         with torch.no_grad():
             generator.eval()
-            generation(config, str(epoch), generator)
+            
+            shape = (64, config['noise_dim'])
 
+            noise = torch.randn(shape, device=device)
+            gen_x = generator(noise).view(64, 1, 28, 28)
+            gen_x = unloader(gen_x)
 
-    torch.save(generator.state_dict(), f'saved_models/generator_{step}.pt')
-    torch.save(critic.state_dict(), f'saved_models/critic_{step}.pt')
+            save_image(gen_x.cpu(), 'samples/sample_' + str(epoch) + '.png')
+
+    torch.save(generator.state_dict(), f'generator_{step}.pt')
+    torch.save(critic.state_dict(), f'critic_{step}.pt')
