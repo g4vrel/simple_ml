@@ -10,7 +10,7 @@ In this implementation, a simple MLP is used for both the generator and the shar
 - Architecture: Simple MLP for both generator and shared network.
 - Latent variables: The latent space consists of a categorical distribution and a uniform distribution.
 
-This implementation is heavily based on the [oficial implementation](https://github.com/openai/InfoGAN).
+This implementation is heavily based on the [official implementation](https://github.com/openai/InfoGAN).
 
 
 ## Generated samples
