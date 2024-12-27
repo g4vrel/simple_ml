@@ -19,8 +19,13 @@ def img_grid(name, generator, config, device='cuda'):
         tensor[start_idx:end_idx] = i
 
     cat = F.one_hot(tensor.long(), 10)
-    cont = torch.empty((100, config['cont_dim']), device=device).uniform_(-1, 1)
-    noise = torch.empty((100, config['noise_dim']), device=device).uniform_(-1, 1)
+    c1 = torch.linspace(-1.0, 1.0, 10, device=device)
+    c2 = torch.linspace(-1.0, 1.0, 10, device=device)
+    c = torch.stack((c1, c2), dim=1)
+    cont = c.repeat(10, 1)
+
+    noise = torch.empty((1, config['noise_dim']), device=device).uniform_(-1, 1)
+    noise = noise.repeat(100, 1)
 
     noise = torch.cat((cat, cont, noise), 1)
 

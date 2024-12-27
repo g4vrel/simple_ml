@@ -23,7 +23,7 @@ if __name__ == '__main__':
         'lambda_continuous': 0.1,
         'lr_dis': 2e-4,
         'lr_gen': 2e-5,
-        'epochs': 500
+        'epochs': 2000
     }
 
     generator = Generator(hidden_dim=512).to(device)
