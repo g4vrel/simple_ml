@@ -19,7 +19,7 @@ if __name__ == '__main__':
         'num_workers': 6,
         'print_freq': 400,
         'lr': 5e-5,
-        'epochs': 500,
+        'epochs': 1500,
         'c': 0.01,
         'n_critic': 5
     }
